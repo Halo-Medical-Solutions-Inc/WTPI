@@ -4,14 +4,14 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 
-from app.utils.business_hours import is_off_hours
+from app.utils.business_hours import get_time_period, is_off_hours
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.session import get_db
 from app.models.call import CallStatus
-from app.prompts import BASE_WTPI_PROMPT, build_returning_caller_prompt
+from app.prompts import build_time_aware_prompt
 from app.services import (
     call_completion_service,
     call_service,
@@ -119,13 +119,28 @@ def _build_model_override(prompt: str) -> Dict[str, Any]:
     }
 
 
+_FIRST_MESSAGE_AUDIO: Dict[str, str] = {
+    "regular": "first-message.wav",
+    "lunch": "first-message-lunch.wav",
+    "after_hours": "first-message-after-hours.wav",
+}
+
+
+def _first_message_url(time_period: str) -> str:
+    base_url = settings.FRONTEND_URL.rstrip("/")
+    audio_file = _FIRST_MESSAGE_AUDIO.get(
+        time_period, _FIRST_MESSAGE_AUDIO["regular"]
+    )
+    return f"{base_url}/{audio_file}"
+
+
 async def _handle_assistant_request(
     db: AsyncSession, body: Dict[str, Any]
 ) -> Dict[str, Any]:
-    overrides: Dict[str, Any] = {
-        "model": _build_model_override(BASE_WTPI_PROMPT),
-    }
+    time_period = get_time_period()
+    audio_url = _first_message_url(time_period)
 
+    previous_summary: str = ""
     try:
         call_data = body.get("message", {}).get("call", {})
         caller_phone = call_data.get("customer", {}).get("number", "")
@@ -136,17 +151,27 @@ async def _handle_assistant_request(
             )
             if previous_calls:
                 display_data = call_service.decrypt_display_data(previous_calls[0])
-                summary = (display_data or {}).get("summary", "")
-                prompt = build_returning_caller_prompt(summary)
-                overrides["firstMessage"] = (
-                    "Hello, you've reached West Texas Pain Institute. "
-                    "If this is a medical emergency, please hang up and dial 9-1-1. "
-                    "Welcome back — are you calling about the same thing as before, "
-                    "or is this something new?"
-                )
-                overrides["model"] = _build_model_override(prompt)
+                previous_summary = (display_data or {}).get("summary", "") or ""
     except Exception as e:
         print(f"Error in assistant-request lookup: {e}")
+
+    prompt = build_time_aware_prompt(
+        time_period=time_period,
+        previous_call_summary=previous_summary or None,
+    )
+
+    overrides: Dict[str, Any] = {
+        "model": _build_model_override(prompt),
+        "firstMessage": audio_url,
+    }
+
+    if previous_summary:
+        overrides["firstMessage"] = (
+            "Hello, you've reached West Texas Pain Institute. "
+            "If this is a medical emergency, please hang up and dial 9-1-1. "
+            "Welcome back — are you calling about the same thing as before, "
+            "or is this something new?"
+        )
 
     return {
         "assistantId": settings.VAPI_ASSISTANT_ID,
