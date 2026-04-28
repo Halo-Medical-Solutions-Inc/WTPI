@@ -119,6 +119,13 @@ def _build_model_override(prompt: str) -> Dict[str, Any]:
     }
 
 
+_VOICE_OVERRIDE: Dict[str, Any] = {
+    "provider": "11labs",
+    "voiceId": "uMM5TEnpKKgD758knVJO",
+    "model": "eleven_multilingual_v2",
+}
+
+
 _FIRST_MESSAGE_AUDIO: Dict[str, str] = {
     "regular": "first-message.wav",
     "lunch": "first-message-lunch.wav",
@@ -162,6 +169,7 @@ async def _handle_assistant_request(
 
     overrides: Dict[str, Any] = {
         "model": _build_model_override(prompt),
+        "voice": _VOICE_OVERRIDE,
         "firstMessage": audio_url,
     }
 
