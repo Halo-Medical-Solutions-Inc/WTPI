@@ -1172,7 +1172,7 @@ export default function PracticeSettingsPage() {
                       <p className="text-[13px] font-medium text-neutral-700">Twilio Number</p>
                       <p className="text-[11px] text-neutral-500 mt-0.5">Inbound call number attached to this practice</p>
                     </div>
-                    <p className="text-[14px] font-medium text-neutral-900">+1 (229) 475-1459</p>
+                    <p className="text-[14px] font-medium text-neutral-900">+1 (915) 621-2512</p>
                   </div>
                 </div>
               </div>
