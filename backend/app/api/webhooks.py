@@ -147,39 +147,13 @@ async def _handle_assistant_request(
     time_period = get_time_period()
     audio_url = _first_message_url(time_period)
 
-    previous_summary: str = ""
-    try:
-        call_data = body.get("message", {}).get("call", {})
-        caller_phone = call_data.get("customer", {}).get("number", "")
-
-        if caller_phone:
-            previous_calls = await call_service.find_completed_calls_by_number(
-                db, caller_phone
-            )
-            if previous_calls:
-                display_data = call_service.decrypt_display_data(previous_calls[0])
-                previous_summary = (display_data or {}).get("summary", "") or ""
-    except Exception as e:
-        print(f"Error in assistant-request lookup: {e}")
-
-    prompt = build_time_aware_prompt(
-        time_period=time_period,
-        previous_call_summary=previous_summary or None,
-    )
+    prompt = build_time_aware_prompt(time_period=time_period)
 
     overrides: Dict[str, Any] = {
         "model": _build_model_override(prompt),
         "voice": _VOICE_OVERRIDE,
         "firstMessage": audio_url,
     }
-
-    if previous_summary:
-        overrides["firstMessage"] = (
-            "Hello, you've reached West Texas Pain Institute. "
-            "If this is a medical emergency, please hang up and dial 9-1-1. "
-            "Welcome back — are you calling about the same thing as before, "
-            "or is this something new?"
-        )
 
     return {
         "assistantId": settings.VAPI_ASSISTANT_ID,

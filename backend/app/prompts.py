@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict
 
 
 BASE_WTPI_PROMPT: str = """SYSTEM PROMPT — WEST TEXAS PAIN INSTITUTE (AI RECEPTIONIST)
@@ -630,39 +630,6 @@ You:
 • Switch to Spanish immediately if the caller speaks Spanish or asks for it.
 """
 
-RETURNING_CALLER_PREAMBLE: str = """
-Previous call summary: {previous_call_summary}
-This is a returning caller — they called within the last 24 hours. Use the summary above for context but do not read it aloud.
-"""
-
-RETURNING_CALLER_ADDENDUM: str = """
-
-RETURNING CALLER INSTRUCTIONS
-
-The first message they heard asked whether they are calling about an existing issue or a new one. Your first priority is to determine which it is based on their response.
-
-If the caller indicates this is about an EXISTING issue (e.g., "existing," "same thing," "following up," "calling back," "the same issue," "yeah the one from earlier," or any similar phrasing):
-
-1. Call the checkOffHours tool immediately.
-
-2. If checkOffHours returns CLOSED (office is closed / after hours):
-   Say: "Someone's out of the office right now. I'll make sure your request gets expedited. In the meantime, can you try calling back during office hours — Monday through Friday, 8 to 5?"
-   Then confirm their callback number and close the call.
-
-3. If checkOffHours returns OPEN (office is open / staff available):
-   Say: "Gotcha, let me transfer you to someone right now."
-   Then execute the transfer to the main line.
-
-If the caller indicates this is a NEW issue (e.g., "new," "something different," "different question," "not related," or any similar phrasing):
-   Proceed with the normal call flow as described above. Treat this as a standard inbound call.
-
-If the caller's response is ambiguous or unclear, ask a brief clarifying question:
-   "No worries — is this about the same thing you called about earlier, or something new?"
-
-Then follow the appropriate path above.
-"""
-
-
 LUNCH_PROMPT_ADDENDUM: str = """
 
 CURRENT TIME WINDOW — LUNCH BREAK (12:00 PM – 1:00 PM Mountain Time)
@@ -705,25 +672,6 @@ def _inject_after_intro(prompt: str, block: str) -> str:
     return prompt.replace(anchor, anchor + "\n" + block)
 
 
-def build_time_aware_prompt(
-    time_period: str,
-    previous_call_summary: Optional[str] = None,
-) -> str:
+def build_time_aware_prompt(time_period: str) -> str:
     addendum = _TIME_PERIOD_ADDENDUMS.get(time_period, "")
-    base = _inject_after_intro(BASE_WTPI_PROMPT, addendum)
-
-    if previous_call_summary:
-        preamble = RETURNING_CALLER_PREAMBLE.replace(
-            "{previous_call_summary}", previous_call_summary
-        )
-        base = _inject_after_intro(base, preamble)
-        return base + RETURNING_CALLER_ADDENDUM
-
-    return base
-
-
-def build_returning_caller_prompt(previous_call_summary: str) -> str:
-    return build_time_aware_prompt(
-        time_period="regular",
-        previous_call_summary=previous_call_summary or "No summary available.",
-    )
+    return _inject_after_intro(BASE_WTPI_PROMPT, addendum)
