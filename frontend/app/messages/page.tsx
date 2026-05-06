@@ -99,7 +99,9 @@ function MessagesContent() {
     (conv: Conversation) => {
       dispatch(setSelectedConversation(conv));
       dispatch(fetchMessages(conv.id));
-      dispatch(markAsRead(conv.id));
+      if (!conv.is_observing) {
+        dispatch(markAsRead(conv.id));
+      }
       dispatch(closeThread());
       if (isMobile) setMobileView("chat");
     },
@@ -371,6 +373,7 @@ function MessagesContent() {
           currentUserId={user?.id ?? ""}
           loading={threadLoading}
           sendingMessage={sendingMessage}
+          isObserving={selectedConversation?.is_observing === true}
           members={
             selectedConversation
               ? selectedConversation.member_ids.map((id, i) => ({
@@ -406,6 +409,7 @@ function MessagesContent() {
           }
           memberCount={selectedConversation.member_names.length}
           isDefault={selectedConversation.is_default}
+          isObserving={selectedConversation.is_observing}
           onAddMember={handleAddMember}
           onRemoveMember={handleRemoveMember}
         />

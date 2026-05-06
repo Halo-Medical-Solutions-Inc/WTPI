@@ -126,9 +126,20 @@ export function handleWebSocketEvent(
       dispatch(messageReactionsUpdated(event.data as ChatMessage));
       break;
 
-    case "conversation_created":
-      dispatch(conversationCreated(event.data as Conversation));
+    case "conversation_created": {
+      const conv = event.data as Conversation;
+      const currentUserId = getState().auth.user?.id;
+      const isMember = currentUserId
+        ? conv.member_ids.includes(currentUserId)
+        : true;
+      dispatch(
+        conversationCreated({
+          ...conv,
+          is_observing: !isMember,
+        }),
+      );
       break;
+    }
 
     case "conversation_deleted":
       dispatch(conversationDeleted((event.data as { id: string }).id));

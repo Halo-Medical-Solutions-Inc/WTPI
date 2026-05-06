@@ -23,6 +23,7 @@ HALOHEALTH_EMAIL_SUFFIX = "@halohealth.app"
 async def get_conversations_for_user(
     db: AsyncSession,
     user_id: uuid.UUID,
+    user_role: Optional[UserRole] = None,
 ) -> List[Dict[str, Any]]:
     member_subq = (
         select(ConversationMember.conversation_id)
@@ -30,7 +31,7 @@ async def get_conversations_for_user(
         .subquery()
     )
 
-    result = await db.execute(
+    own_query = (
         select(Conversation)
         .where(Conversation.id.in_(select(member_subq.c.conversation_id)))
         .options(
@@ -38,10 +39,13 @@ async def get_conversations_for_user(
         )
         .order_by(Conversation.updated_at.desc())
     )
-    conversations = list(result.scalars().all())
+    own_result = await db.execute(own_query)
+    own_conversations = list(own_result.scalars().all())
 
     output: List[Dict[str, Any]] = []
-    for conv in conversations:
+    own_conv_ids: set[uuid.UUID] = set()
+    for conv in own_conversations:
+        own_conv_ids.add(conv.id)
         last_msg = await _get_last_message(db, conv.id)
 
         my_member = next(
@@ -52,8 +56,39 @@ async def get_conversations_for_user(
             unread = await _count_unread(db, conv.id, my_member.last_read_at)
 
         output.append(
-            _build_conversation_dict(conv, last_msg, unread)
+            _build_conversation_dict(conv, last_msg, unread, is_observing=False)
         )
+
+    if user_role == UserRole.SUPER_ADMIN:
+        observed_query = (
+            select(Conversation)
+            .where(
+                Conversation.type.in_(
+                    [ConversationType.DIRECT, ConversationType.GROUP]
+                ),
+            )
+            .options(
+                selectinload(Conversation.members).selectinload(
+                    ConversationMember.user
+                ),
+            )
+            .order_by(Conversation.updated_at.desc())
+        )
+        if own_conv_ids:
+            observed_query = observed_query.where(
+                Conversation.id.notin_(own_conv_ids)
+            )
+
+        observed_result = await db.execute(observed_query)
+        observed_conversations = list(observed_result.scalars().all())
+
+        for conv in observed_conversations:
+            last_msg = await _get_last_message(db, conv.id)
+            output.append(
+                _build_conversation_dict(conv, last_msg, 0, is_observing=True)
+            )
+
+        output.sort(key=lambda c: c["updated_at"], reverse=True)
 
     return output
 
@@ -419,6 +454,61 @@ async def get_member_user_ids(
     return [str(uid) for uid in result.scalars().all()]
 
 
+async def get_super_admin_user_ids(db: AsyncSession) -> List[str]:
+    result = await db.execute(
+        select(User.id).where(
+            User.role == UserRole.SUPER_ADMIN,
+            User.deleted_at.is_(None),
+        )
+    )
+    return [str(uid) for uid in result.scalars().all()]
+
+
+async def get_event_recipient_ids(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+) -> List[str]:
+    member_ids = await get_member_user_ids(db, conversation_id)
+    conv = await db.get(Conversation, conversation_id)
+    if conv is None:
+        return member_ids
+
+    if conv.type not in (ConversationType.DIRECT, ConversationType.GROUP):
+        return member_ids
+
+    super_admin_ids = await get_super_admin_user_ids(db)
+    combined = set(member_ids) | set(super_admin_ids)
+    return list(combined)
+
+
+async def can_user_view_conversation(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user: User,
+) -> bool:
+    member_ids = await get_member_user_ids(db, conversation_id)
+    if str(user.id) in member_ids:
+        return True
+
+    if user.role != UserRole.SUPER_ADMIN:
+        return False
+
+    conv = await db.get(Conversation, conversation_id)
+    if conv is None:
+        return False
+
+    return conv.type in (ConversationType.DIRECT, ConversationType.GROUP)
+
+
+async def is_user_member(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> bool:
+    member_ids = await get_member_user_ids(db, conversation_id)
+    return str(user_id) in member_ids
+
+
 async def ensure_defaults(db: AsyncSession) -> None:
     default_names = [DEFAULT_CHANNEL_NAME, SUPPORT_CHANNEL_NAME]
 
@@ -730,6 +820,7 @@ def _build_conversation_dict(
     conv: Conversation,
     last_msg: Optional[Message],
     unread: int,
+    is_observing: bool = False,
 ) -> Dict[str, Any]:
     return {
         "id": str(conv.id),
@@ -751,6 +842,7 @@ def _build_conversation_dict(
             last_msg.user.full_name if last_msg and last_msg.user else None
         ),
         "unread_count": unread,
+        "is_observing": is_observing,
         "created_at": conv.created_at.isoformat(),
         "updated_at": conv.updated_at.isoformat(),
     }

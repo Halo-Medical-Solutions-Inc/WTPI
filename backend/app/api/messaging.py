@@ -51,7 +51,7 @@ async def list_conversations(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     conversations = await messaging_service.get_conversations_for_user(
-        db, current_user.id
+        db, current_user.id, current_user.role
     )
     return _success(conversations)
 
@@ -78,7 +78,7 @@ async def create_conversation(
         member_ids=[uid for uid in body.member_ids],
     )
 
-    member_ids = await messaging_service.get_member_user_ids(db, conv.id)
+    recipient_ids = await messaging_service.get_event_recipient_ids(db, conv.id)
 
     last_msg = None
     if conv.messages:
@@ -86,7 +86,7 @@ async def create_conversation(
 
     conv_data = messaging_service._build_conversation_dict(conv, last_msg, 0)
 
-    await publish_to_users("conversation_created", conv_data, member_ids)
+    await publish_to_users("conversation_created", conv_data, recipient_ids)
 
     return _success(conv_data, message="Conversation created")
 
@@ -99,8 +99,10 @@ async def get_messages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    member_ids = await messaging_service.get_member_user_ids(db, conversation_id)
-    if str(current_user.id) not in member_ids:
+    can_view = await messaging_service.can_user_view_conversation(
+        db, conversation_id, current_user
+    )
+    if not can_view:
         raise AppError("Not a member of this conversation", 403)
 
     messages, has_more = await messaging_service.get_messages(
@@ -141,10 +143,13 @@ async def send_message(
 
     serialized = _serialize_message(msg)
 
+    recipient_ids = await messaging_service.get_event_recipient_ids(
+        db, conversation_id
+    )
     await publish_to_users(
         "message_created",
         serialized,
-        member_ids,
+        recipient_ids,
     )
 
     await mention_service.create_mentions_for_message(
@@ -183,8 +188,10 @@ async def get_thread_messages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    member_ids = await messaging_service.get_member_user_ids(db, conversation_id)
-    if str(current_user.id) not in member_ids:
+    can_view = await messaging_service.can_user_view_conversation(
+        db, conversation_id, current_user
+    )
+    if not can_view:
         raise AppError("Not a member of this conversation", 403)
 
     parent = await messaging_service.get_message_by_id(db, message_id)
@@ -239,7 +246,9 @@ async def add_conversation_member(
     if member is None:
         raise AppError("User is already a member", 400)
 
-    updated_member_ids = await messaging_service.get_member_user_ids(db, conversation_id)
+    recipient_ids = await messaging_service.get_event_recipient_ids(
+        db, conversation_id
+    )
     await publish_to_users(
         "conversation_member_added",
         {
@@ -247,7 +256,7 @@ async def add_conversation_member(
             "user_id": str(body.user_id),
             "user_name": member.user.full_name if member.user else "Unknown",
         },
-        updated_member_ids,
+        recipient_ids,
     )
 
     return _success(message="Member added")
@@ -300,11 +309,11 @@ async def edit_message(
         raise AppError("Message not found", 404)
 
     rc = await messaging_service.get_reply_count(db, message_id)
-    member_ids = await messaging_service.get_member_user_ids(
+    recipient_ids = await messaging_service.get_event_recipient_ids(
         db, updated.conversation_id
     )
     serialized = _serialize_message(updated, reply_count=rc)
-    await publish_to_users("message_updated", serialized, member_ids)
+    await publish_to_users("message_updated", serialized, recipient_ids)
 
     return _success(serialized, message="Message edited")
 
@@ -325,7 +334,9 @@ async def delete_message(
         raise AppError("Not authorized to delete this message", 403)
 
     conversation_id = msg.conversation_id
-    member_ids = await messaging_service.get_member_user_ids(db, conversation_id)
+    recipient_ids = await messaging_service.get_event_recipient_ids(
+        db, conversation_id
+    )
 
     deleted = await messaging_service.delete_message(db, message_id)
     if not deleted:
@@ -334,7 +345,7 @@ async def delete_message(
     await publish_to_users(
         "message_deleted",
         {"id": str(message_id), "conversation_id": str(conversation_id)},
-        member_ids,
+        recipient_ids,
     )
 
     return _success(message="Message deleted")
@@ -366,10 +377,13 @@ async def toggle_reaction(
     rc = await messaging_service.get_reply_count(db, message_id)
     serialized = _serialize_message(updated_msg, reply_count=rc)
 
+    recipient_ids = await messaging_service.get_event_recipient_ids(
+        db, msg.conversation_id
+    )
     await publish_to_users(
         "message_reactions_updated",
         serialized,
-        member_ids,
+        recipient_ids,
     )
 
     action = "added" if added else "removed"
@@ -397,7 +411,9 @@ async def delete_conversation(
     if not is_super and not is_creator and not (is_dm_or_group and is_member):
         raise AppError("Not authorized to delete this conversation", 403)
 
-    member_ids = await messaging_service.get_member_user_ids(db, conversation_id)
+    recipient_ids = await messaging_service.get_event_recipient_ids(
+        db, conversation_id
+    )
 
     deleted = await messaging_service.delete_conversation(db, conversation_id)
     if not deleted:
@@ -406,7 +422,7 @@ async def delete_conversation(
     await publish_to_users(
         "conversation_deleted",
         {"id": str(conversation_id)},
-        member_ids,
+        recipient_ids,
     )
 
     return _success(message="Conversation deleted")

@@ -24,6 +24,7 @@ interface ManageMembersDialogProps {
   conversationName: string;
   memberCount: number;
   isDefault: boolean;
+  isObserving: boolean;
   onAddMember: (userId: string) => void;
   onRemoveMember: (userId: string) => void;
 }
@@ -44,6 +45,7 @@ export default function ManageMembersDialog({
   conversationName,
   memberCount,
   isDefault,
+  isObserving,
   onAddMember,
   onRemoveMember,
 }: ManageMembersDialogProps) {
@@ -61,16 +63,18 @@ export default function ManageMembersDialog({
 
   const memberSet = useMemo(() => new Set(memberIds), [memberIds]);
 
+  const readOnly = isDefault || isObserving;
+
   const filteredUsers = useMemo(() => {
-    const base = isDefault ? users.filter((u) => memberSet.has(u.id)) : users;
+    const base = readOnly ? users.filter((u) => memberSet.has(u.id)) : users;
     if (!searchQuery.trim()) return base;
     return base.filter((u) =>
       u.full_name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-  }, [users, searchQuery, isDefault, memberSet]);
+  }, [users, searchQuery, readOnly, memberSet]);
 
   function handleToggle(userId: string): void {
-    if (isDefault) return;
+    if (readOnly) return;
     if (userId === currentUser?.id) return;
     if (memberSet.has(userId)) {
       onRemoveMember(userId);
@@ -112,7 +116,7 @@ export default function ManageMembersDialog({
                 const isMember = memberSet.has(u.id);
                 const isSelf = u.id === currentUser?.id;
 
-                const clickable = !isDefault && !isSelf;
+                const clickable = !readOnly && !isSelf;
 
                 return (
                   <button
@@ -140,7 +144,7 @@ export default function ManageMembersDialog({
                         {u.role === "SUPER_ADMIN" ? "HALO" : u.role}
                       </span>
                     </div>
-                    {!isDefault && (
+                    {!readOnly && (
                       <div
                         className={cn(
                           "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",

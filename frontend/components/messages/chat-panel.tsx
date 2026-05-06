@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format } from "date-fns";
-import { Archive, ArrowLeft, ArrowUp, Bold, Check, Hash, Italic, Loader2, MessageSquare, Pencil, Smile, Strikethrough, Users, X } from "lucide-react";
+import { Archive, ArrowLeft, ArrowUp, Bold, Check, Eye, Hash, Italic, Loader2, MessageSquare, Pencil, Smile, Strikethrough, Users, X } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -269,6 +269,7 @@ export default function ChatPanel({
 
   const title = conversation ? getConversationTitle(conversation, currentUserId) : "";
   const isChannel = conversation?.type === ConversationType.CHANNEL;
+  const isObserving = conversation?.is_observing === true;
   const placeholderText = conversation
     ? `Message ${isChannel ? "#" + conversation.name : title}`
     : "Message...";
@@ -483,12 +484,18 @@ export default function ChatPanel({
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      onClick={() => onToggleReaction(msg.id, gr.emoji)}
+                                      onClick={() => {
+                                        if (isObserving) return;
+                                        onToggleReaction(msg.id, gr.emoji);
+                                      }}
+                                      disabled={isObserving}
                                       className={cn(
                                         "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] transition-colors",
                                         gr.hasReacted
                                           ? "border-blue-200 bg-blue-50 text-blue-700"
-                                          : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50",
+                                          : "border-neutral-200 bg-white text-neutral-600",
+                                        !isObserving && "hover:bg-neutral-50",
+                                        isObserving && "cursor-default",
                                       )}
                                     >
                                       <span>{gr.emoji}</span>
@@ -514,7 +521,7 @@ export default function ChatPanel({
                       </div>
                     </div>
 
-                    {!isEditing && (
+                    {!isEditing && !isObserving && (
                       <div
                         data-action-bar
                         className={cn(
@@ -593,6 +600,12 @@ export default function ChatPanel({
       </div>
 
       <div className="px-4 pb-4">
+        {isObserving ? (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span>View only — observing as super admin. You can&apos;t send messages here.</span>
+          </div>
+        ) : (
         <div className={cn(
           "relative overflow-hidden rounded-lg border border-neutral-300 bg-white transition-colors focus-within:border-neutral-400",
           editingId && "pointer-events-none opacity-40"
@@ -671,6 +684,7 @@ export default function ChatPanel({
             </Button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

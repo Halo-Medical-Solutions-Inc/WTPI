@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format } from "date-fns";
-import { ArrowLeft, ArrowUp, Bold, Italic, Loader2, Smile, Strikethrough, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bold, Eye, Italic, Loader2, Smile, Strikethrough, X } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -32,6 +32,7 @@ interface ThreadPanelProps {
   currentUserId: string;
   loading: boolean;
   sendingMessage: boolean;
+  isObserving: boolean;
   members: { id: string; name: string }[];
   onSendReply: (content: string) => void;
   onClose: () => void;
@@ -76,6 +77,7 @@ function MessageRow({
   isTapped,
   onTap,
   isMobile,
+  isObserving,
 }: {
   msg: ChatMessage;
   currentUserId: string;
@@ -83,6 +85,7 @@ function MessageRow({
   isTapped: boolean;
   onTap: () => void;
   isMobile: boolean;
+  isObserving: boolean;
 }) {
   const grouped = groupReactions(msg.reactions || [], currentUserId);
 
@@ -116,12 +119,18 @@ function MessageRow({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => onToggleReaction(msg.id, gr.emoji)}
+                        onClick={() => {
+                          if (isObserving) return;
+                          onToggleReaction(msg.id, gr.emoji);
+                        }}
+                        disabled={isObserving}
                         className={cn(
                           "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] transition-colors",
                           gr.hasReacted
                             ? "border-blue-200 bg-blue-50 text-blue-700"
-                            : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50",
+                            : "border-neutral-200 bg-white text-neutral-600",
+                          !isObserving && "hover:bg-neutral-50",
+                          isObserving && "cursor-default",
                         )}
                       >
                         <span>{gr.emoji}</span>
@@ -137,25 +146,28 @@ function MessageRow({
         </div>
       </div>
 
-      <div
-        data-action-bar
-        className={cn(
-          "absolute -top-2 right-1 items-center gap-0.5 rounded-md border border-neutral-200 bg-white px-0.5 py-0.5 shadow-sm",
-          isMobile
-            ? (isTapped ? "flex" : "hidden")
-            : "hidden group-hover:flex"
-      )}>
-        {REACTION_EMOJIS.map((emoji) => (
-          <button
-            key={emoji}
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onToggleReaction(msg.id, emoji); onTap(); }}
-            className="rounded px-1 py-0.5 text-[13px] transition-colors hover:bg-neutral-100"
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
+      {!isObserving && (
+        <div
+          data-action-bar
+          className={cn(
+            "absolute -top-2 right-1 items-center gap-0.5 rounded-md border border-neutral-200 bg-white px-0.5 py-0.5 shadow-sm",
+            isMobile
+              ? (isTapped ? "flex" : "hidden")
+              : "hidden group-hover:flex"
+          )}
+        >
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggleReaction(msg.id, emoji); onTap(); }}
+              className="rounded px-1 py-0.5 text-[13px] transition-colors hover:bg-neutral-100"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -166,6 +178,7 @@ export default function ThreadPanel({
   currentUserId,
   loading,
   sendingMessage,
+  isObserving,
   members,
   onSendReply,
   onClose,
@@ -276,6 +289,7 @@ export default function ThreadPanel({
                 isTapped={tappedMessageId === parent.id}
                 onTap={() => setTappedMessageId(tappedMessageId === parent.id ? null : parent.id)}
                 isMobile={isMobile}
+                isObserving={isObserving}
               />
             </div>
 
@@ -298,6 +312,7 @@ export default function ThreadPanel({
                   isTapped={tappedMessageId === reply.id}
                   onTap={() => setTappedMessageId(tappedMessageId === reply.id ? null : reply.id)}
                   isMobile={isMobile}
+                  isObserving={isObserving}
                 />
               ))}
             </div>
@@ -306,6 +321,12 @@ export default function ThreadPanel({
       </div>
 
       <div className="px-3 pb-3">
+        {isObserving ? (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+            <Eye className="h-3 w-3 shrink-0" />
+            <span>View only — observing as super admin.</span>
+          </div>
+        ) : (
         <div className="overflow-hidden rounded-lg border border-neutral-300 bg-white transition-colors focus-within:border-neutral-400">
           <EditorContent editor={editor} />
           <MessageMentionPopup editor={editor} members={members} />
@@ -367,6 +388,7 @@ export default function ThreadPanel({
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

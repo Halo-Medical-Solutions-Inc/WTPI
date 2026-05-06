@@ -16,6 +16,7 @@ export interface Conversation {
   last_message_at: string | null;
   last_message_by: string | null;
   unread_count: number;
+  is_observing: boolean;
   created_at: string;
   updated_at: string;
 }

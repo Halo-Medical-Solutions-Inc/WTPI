@@ -345,7 +345,8 @@ const messagesSlice = createSlice({
 
         const isViewingThis =
           state.selectedConversation?.id === action.payload.conversation_id;
-        if (!isViewingThis) {
+        const isObserving = state.conversations[convIndex].is_observing;
+        if (!isViewingThis && !isObserving) {
           state.conversations[convIndex].unread_count += 1;
           state.unreadTotal += 1;
         }

@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Archive, Hash, MessageSquarePlus, Plus } from "lucide-react";
+import { Archive, Eye, Hash, MessageSquarePlus, Plus } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -83,7 +83,15 @@ export default function ConversationList({
     });
 
   const directMessages = conversations.filter(
-    (c) => c.type === ConversationType.DIRECT || c.type === ConversationType.GROUP,
+    (c) =>
+      (c.type === ConversationType.DIRECT || c.type === ConversationType.GROUP) &&
+      !c.is_observing,
+  );
+
+  const observed = conversations.filter(
+    (c) =>
+      (c.type === ConversationType.DIRECT || c.type === ConversationType.GROUP) &&
+      c.is_observing,
   );
 
   return (
@@ -175,6 +183,41 @@ export default function ConversationList({
           {directMessages.length === 0 && (
             <p className="px-4 py-2 text-[12px] text-neutral-400">No messages yet</p>
           )}
+
+          {observed.length > 0 && (
+            <>
+              <div className="mt-3 flex items-center justify-between px-4 py-1.5">
+                <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                  <Eye className="h-3 w-3" />
+                  Observing
+                </span>
+              </div>
+              {observed.map((conv) => {
+                const otherNames = getDmOtherNames(conv, currentUserId);
+                const displayName = getDmDisplayName(otherNames, conv, currentUserId);
+                const isGroup = otherNames.length > 1;
+                return (
+                  <ConversationRow
+                    key={conv.id}
+                    conversation={conv}
+                    isSelected={selectedId === conv.id}
+                    currentUserId={currentUserId}
+                    onSelect={onSelect}
+                    onDelete={onDelete}
+                    icon={
+                      <Avatar className="h-5 w-5 shrink-0">
+                        <AvatarFallback className="bg-neutral-200 text-[8px] font-medium text-neutral-600">
+                          {getInitials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                    }
+                    label={displayName}
+                    tooltipText={isGroup ? otherNames.join("\n") : undefined}
+                  />
+                );
+              })}
+            </>
+          )}
         </div>
       </ScrollArea>
     </div>
@@ -200,8 +243,8 @@ function ConversationRow({
   label: string;
   tooltipText?: string;
 }) {
-  const hasUnread = conversation.unread_count > 0;
-  const canDelete = !conversation.is_default;
+  const hasUnread = conversation.unread_count > 0 && !conversation.is_observing;
+  const canDelete = !conversation.is_default && !conversation.is_observing;
 
   const rowContent = (
     <div
@@ -220,10 +263,14 @@ function ConversationRow({
           className={cn(
             "truncate text-[13px]",
             hasUnread ? "font-semibold text-neutral-900" : "text-neutral-700",
+            conversation.is_observing && "italic text-neutral-500",
           )}
         >
           {label}
         </span>
+        {conversation.is_observing && (
+          <Eye className="ml-auto h-3 w-3 shrink-0 text-neutral-400" />
+        )}
         {hasUnread && (
           <span className="ml-auto shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
             {conversation.unread_count}
